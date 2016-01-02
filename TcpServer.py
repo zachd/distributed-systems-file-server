@@ -3,6 +3,7 @@ import socket
 import re
 import os
 import math
+import settings
 from time import sleep
 from Queue import Queue
 import thread
@@ -17,7 +18,7 @@ class Worker(Thread):
         Thread.__init__(self)
         # store clients queue pointer
         self.requests = requests
-        # outer function to process request
+        # outer function to get and process request
         self.func = func
         # set as daemon so it dies when main thread exits
         self.daemon = True
@@ -49,7 +50,8 @@ class Worker(Thread):
                     break
             # pass message to TcpServer process_req function
             if msg:
-                self.func(msg)
+                self.func(conn, msg)
+
 
 # define main tcp server class
 class TcpServer():
@@ -78,7 +80,7 @@ class TcpServer():
 
         # create initial workers
         for _ in range(int(self.MIN_THREADS)): 
-            Worker(requests, self.process_req)
+            Worker(requests, self.get_req)
 
         # continuous loop to keep accepting requests
         while 1:
@@ -109,12 +111,36 @@ class TcpServer():
             # receive data and put request in queue
             requests.put((conn, addr))
 
-    # function to process request from worker thread
-    def process_req(self, msg):
-        print "Received Request: " + msg
+    # send message back to connection
+    def send_msg(self, conn, msg):
+        print "Sent: \"" + msg + "\""
+        conn.sendall(msg)
+
+    # return an error message to the user
+    def error(self, conn, msg):
+        self.send_msg(conn, ERROR_MSG.format(msg))
+    
+    # read the request from the worker thread
+    def get_req(self, conn, msg):
+        print "Received: \"" + msg + "\""
+        matched_request = ""
+        matched_vars = []
+        for r in self.requests:
+            m = re.match(r.replace("{}", "(.*)"), msg)
+            if m:
+                matched_request = r
+                matched_vars = m.groups()
+        if not matched_request:
+            self.error(conn, "Unknown Message")
+        else:
+            self.process_req(conn, matched_request, matched_vars)
+
+    # process the matched request
+    def process_req(self, conn, request, vars):
+        print "Received: \"" + request.format(vars) + "\""
 
 def main():
-    
+
     # find port number from console arguments
     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
         sys.exit("Port number required")

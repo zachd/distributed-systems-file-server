@@ -1,9 +1,16 @@
+import re
 import sys
+import config
 from TcpServer import TcpServer
 
 class FileServer(TcpServer):
-    def process_req(self, msg):
-        print "Testing" + msg
+    requests = {config.CLIENT_REQUEST}
+    files = {}
+
+    # override request processing function
+    def process_req(self, conn, request, vars):
+        if request == config.CLIENT_REQUEST:
+            self.send_msg(conn, config.SERVER_RESPONSE.format("x.py", "ASDFSADGAG"))
 
 def main():
     # find port number from console arguments
