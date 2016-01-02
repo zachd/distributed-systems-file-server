@@ -1,0 +1,3 @@
+CLIENT_REQUEST = 'CLIENT: {}\nFILE_NAME: {}\nFUNCTION: {}\nDATA: {}\n\n'
+SERVER_RESPONSE = 'FILE_NAME: {}\nDATA: {}\n\n'
+ERROR_MSG = 'ERROR: {}\n\n'
