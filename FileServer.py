@@ -5,51 +5,88 @@ from time import sleep
 from TcpServer import TcpServer
 
 class FileServer(TcpServer):
-    messages = {config.CLIENT_WRITE_FILE, config.CLIENT_READ_FILE, config.RETURN_FILE_ID, config.LOCK_STATUS, config.RETURN_FILE_DATA, config.FILE_NOT_FOUND}
+    messages = {config.CLIENT_WRITE_FILE, config.CLIENT_READ_FILE, config.RETURN_FILE_ID, config.LOCK_STATUS, config.CLIENT_REQUEST_LOCK, config.CLIENT_REQUEST_UNLOCK, config.RETURN_FILE_DATA, config.FILE_NOT_FOUND}
     files = {}
 
     # override request processing function
     def process_req(self, conn, request, vars):
+        # client requesting to read or write to file
         if request == config.CLIENT_WRITE_FILE or request == config.CLIENT_READ_FILE:
             filename = vars[0]
             directory = vars[1]
+            client = vars[2]
+            # set action keyword depending on client request
             action = 'WRITE' if request == config.CLIENT_WRITE_FILE else 'READ'
+
+            # request file identifier from the directory server
             (file_id_response, file_id_vars) = self.propagate_msg(config.REQUEST_FILE_ID, (filename, directory, action), config.DIR_SERVER)
-            file_id = file_id_vars[0]
-            print file_id
             if file_id_response == config.RETURN_FILE_ID:
+                file_id = file_id_vars[0]
+
+                # attempt to gain access to the file from lock server
                 for i in range(config.LOCK_ATTEMPTS):
-                    (lock_response, lock_vars) = self.propagate_msg(config.REQUEST_LOCK, (file_id), config.LOCK_SERVER)
-                    if lock_vars[0] == 'SUCCESS':
+                    (lock_response, lock_vars) = self.propagate_msg(config.REQUEST_USAGE, (file_id,client), config.LOCK_SERVER)
+                    
+                    # check if lock server allows file usage
+                    if lock_vars[0] == 'ALLOWED':
                         if action == 'WRITE':
-                            self.propagate_msg(config.REQUEST_FILE, (file_id), config.REPLICATION_SERVER)
-                        else:
-                            (replic_response, replic_vars) = self.propagate_msg(config.REQUEST_FILE, (file_id), config.REPLICATION_SERVER)
+                            # send write request to replication master to update file data
+                            self.propagate_msg(config.UPDATE_FILE_DATA, (file_id, vars[3]), config.REP_SERVER, False)
+                            # return success message to user
+                            self.send_msg(conn, config.SUCCESS.format("File " + filename + " written successfully."))
+                        elif action == 'READ':
+                            # ask for file data from replication master to send back to user
+                            (replic_response, replic_vars) = self.propagate_msg(config.REQUEST_FILE_DATA, (file_id,), config.REP_SERVER)
                             data = replic_vars[0]
+                            self.send_msg(conn, config.RETURN_FILE_DATA.format(data))
                         break
                     else:
+                        # sleep and try file access again
                         sleep(0.01)
-                if lock_vars[0] == 'SUCCESS':
-                    self.propagate_msg(config.REQUEST_UNLOCK, (file_id), config.LOCK_SERVER)
-                    if action == 'WRITE':
-                        self.send_msg(conn, config.SUCCESS.format("File " + filename + " written successfully."))
-                    else:
-                        self.send_msg(conn, config.RETURN_FILE.format(filename, directory, data))
-                else:
-                    self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File in use."))
+
+                # return failure message to user if lock server disallowed access
+                if lock_vars[0] != 'ALLOWED':
+                    self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File is locked."))
+            
+            # return failure message to user if directory server couldn't find file
             elif file_id_req == config.FILE_NOT_FOUND:
-                self.send_msg(conn, config.FAILURE.format("Could not open " + filename, "File not found."))
-        elif request == config.CLIENT_READ_FILE:
-            pass
-        else:
-            print request
+                self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
+        
+        # client request to lock or unlock file
+        elif request == config.CLIENT_REQUEST_LOCK or request == CLIENT_REQUEST_UNLOCK:
+            filename = vars[0]
+            directory = vars[1]
+            client = vars[2]
+
+            # set action request and keyword depending on client request
+            desired_action = config.REQUEST_LOCK if request == config.CLIENT_REQUEST_LOCK else config.REQUEST_UNLOCK
+            act_completed = "lock" if request == CLIENT_REQUEST_LOCK else "unlock"
+            
+            # request file identifier from the directory server
+            (file_id_response, file_id_vars) = self.propagate_msg(config.REQUEST_FILE_ID, (filename, directory, "READ"), config.DIR_SERVER)
+            if file_id_response == config.RETURN_FILE_ID:
+                file_id = file_id_vars[0]
+
+                # attempt to perform specified action on lock server
+                for i in range(config.LOCK_ATTEMPTS):
+                    (lock_response, lock_vars) = self.propagate_msg(desired_action, (file_id, client), config.LOCK_SERVER)
+                    
+                    # check if action completed successfully
+                    if lock_vars[0] == 'SUCCESS':
+                        self.send_msg(conn, config.SUCCESS.format("File " + filename + " " + act_completed + "ed successfully."))
+                        break
+                    else:
+                        # sleep and try action again
+                        sleep(0.01)
+
+                # return failure message to user if lock server disallowed action
+                if lock_vars[0] != 'SUCCESS':
+                    self.send_msg(conn, config.FAILURE.format("Could not " + act_completed + " " + filename, "File locked by another user."))
+            
+            # return failure message to user if directory server couldn't find file
+            elif file_id_req == config.FILE_NOT_FOUND:
+                self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
 
 def main():
-    # find port number from console arguments
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        sys.exit("Port number required")
-
-    # start tcp server
-    server = FileServer(int(sys.argv[1]))
-
+    server = FileServer(config.FILE_SERVER)
 if __name__ == "__main__": main()

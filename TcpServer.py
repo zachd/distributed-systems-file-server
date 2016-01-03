@@ -124,12 +124,12 @@ class TcpServer():
 
     # send message back to connection
     def send_msg(self, conn, data):
-        print "Sent: \"" + data + "\""
+        print "Sent: \"" + data.rstrip('\n') + "\""
         conn.sendall(data)
 
     # read the request message from the input
     def get_req(self, conn, msg):
-        print "Received: \"" + msg + "\""
+        print "Received: \"" + msg.rstrip('\n') + "\""
         matched_request = ""
         matched_vars = []
         for r in self.messages:
@@ -144,10 +144,10 @@ class TcpServer():
 
     # process the matched request
     def process_req(self, conn, request, vars):
-        print "Received: \"" + request.format(*vars) + "\""
+        print "Received: \"" + request.format(*vars).rstrip('\n') + "\""
 
     # send message to server
-    def propagate_msg(self, request, vars, server):
+    def propagate_msg(self, request, vars, server, response_required=True):
         # connect to socket
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(("localhost", server)) 
@@ -156,7 +156,8 @@ class TcpServer():
         self.send_msg(s, request.format(*vars))
 
         # accept response from socket
-        return self.get_req(s, TcpServer.extract_msg(s, s.getpeername()))
+        if response_required:
+            return self.get_req(s, TcpServer.extract_msg(s, s.getpeername()))
 
     # return an error message to the user
     def error(self, conn, msg):
