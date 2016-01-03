@@ -13,7 +13,7 @@ s.connect(("localhost", int(sys.argv[1])))
 s.settimeout(2)
 
 # send data
-data = config.CLIENT_REQUEST.format("Zachary", "test.py", "WRITE", "hello")
+data = config.CLIENT_WRITE_FILE.format("test.py", "Desktop", "hello")
 print "Sent: \"" + data + "\""
 s.sendall(data)
 

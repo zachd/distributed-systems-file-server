@@ -3,7 +3,8 @@ import socket
 import re
 import os
 import math
-import settings
+import config
+import hashlib
 from time import sleep
 from Queue import Queue
 import thread
@@ -13,13 +14,14 @@ from threading import Thread, Lock
 # base from http://code.activestate.com/recipes/577187-python-thread-pool/
 class Worker(Thread):
     """Thread executing tasks from a given tasks queue"""
-    def __init__(self, requests, func):
+    def __init__(self, requests, get_req, process_req):
         print "Worker Created!"
         Thread.__init__(self)
         # store clients queue pointer
         self.requests = requests
-        # outer function to get and process request
-        self.func = func
+        # outer functions handlers to get and process reqs
+        self.get_req = get_req
+        self.process_req = process_req
         # set as daemon so it dies when main thread exits
         self.daemon = True
         # start the thread on init
@@ -32,26 +34,12 @@ class Worker(Thread):
             (conn, addr) = self.requests.get()
             # check if valid connection or else kill loop
             if conn:
-                self.get_msg(conn, addr)
+                (request, vars) = self.get_req(conn, TcpServer.extract_msg(conn, addr))
+                self.process_req(conn, request, vars)
             else:
                 break;
             # set task as done in queue
             self.requests.task_done()
-
-    # function to get message text from a connection
-    def get_msg(self, conn, addr):
-        while conn:
-            msg = ""
-            # Loop through message to receive data
-            while "\n\n" not in msg:
-                data = conn.recv(4096)
-                msg += data
-                if len(data) < 4096:
-                    break
-            # pass message to TcpServer process_req function
-            if msg:
-                self.func(conn, msg)
-
 
 # define main tcp server class
 class TcpServer():
@@ -69,10 +57,10 @@ class TcpServer():
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # queue object to store requests
-        requests = Queue()
+        self.requests = Queue()
 
         # thread counter
-        num_threads = self.MIN_THREADS
+        self.num_threads = self.MIN_THREADS
 
         # bind to port and listen for connections
         s.bind(("0.0.0.0", port)) 
@@ -80,52 +68,71 @@ class TcpServer():
 
         # create initial workers
         for _ in range(int(self.MIN_THREADS)): 
-            Worker(requests, self.get_req)
+            Worker(self.requests, self.get_req, self.process_req)
 
         # continuous loop to keep accepting requests
         while 1:
             # accept a connection request
             conn, addr = s.accept()
+            self.accept(conn, addr)
 
-            # cache queue size and get threshold
-            qsize = requests.qsize()
-            queue_margin = int(math.ceil(num_threads * (self.QUEUE_THRESHOLD / 100.0)))
+    # accept connection request from socket
+    def accept(self, conn, addr):
+        # cache queue size and get threshold
+        qsize = self.requests.qsize()
+        queue_margin = int(math.ceil(self.num_threads * (self.QUEUE_THRESHOLD / 100.0)))
 
-            # check if queue size is between num_threads and (num_threads - margin)
-            if qsize >= (num_threads - queue_margin) and num_threads != self.MAX_THREADS:
-                # add queue_margin amount of new workers
-                for _ in range(queue_margin): 
-                    if num_threads == self.MAX_THREADS:
-                        break
-                    Worker(requests)
-                    num_threads += 1
-            # else check if queue size is between 0 and margin
-            elif qsize <= queue_margin and num_threads != self.MIN_THREADS:
-                # remove queue_margin amount of workers
-                for _ in range(queue_margin): 
-                    if num_threads == self.MIN_THREADS:
-                        break
-                    clients.put((None, None))
-                    num_threads -= 1
+        # check if queue size is between num_threads and (num_threads - margin)
+        if qsize >= (self.num_threads - queue_margin) and self.num_threads != self.MAX_THREADS:
+            # add queue_margin amount of new workers
+            for _ in range(queue_margin): 
+                if self.num_threads == self.MAX_THREADS:
+                    break
+                Worker(self.requests)
+                self.num_threads += 1
+        # else check if queue size is between 0 and margin
+        elif qsize <= queue_margin and self.num_threads != self.MIN_THREADS:
+            # remove queue_margin amount of workers
+            for _ in range(queue_margin): 
+                if self.num_threads == self.MIN_THREADS:
+                    break
+                clients.put((None, None))
+                self.num_threads -= 1
 
-            # receive data and put request in queue
-            requests.put((conn, addr))
+        # receive data and put request in queue
+        self.requests.put((conn, addr))
+    
+    # create hash of string
+    @staticmethod
+    def hash_str(string):
+        sha = hashlib.sha1(string)
+        return sha.hexdigest()
+
+    # function to get message text from a connection
+    @staticmethod
+    def extract_msg(conn, addr):
+        while conn:
+            msg = ""
+            # Loop through message to receive data
+            while "\n\n" not in msg:
+                data = conn.recv(4096)
+                msg += data
+                if len(data) < 4096:
+                    break
+            if msg:
+                return msg
 
     # send message back to connection
-    def send_msg(self, conn, msg):
-        print "Sent: \"" + msg + "\""
-        conn.sendall(msg)
+    def send_msg(self, conn, data):
+        print "Sent: \"" + data + "\""
+        conn.sendall(data)
 
-    # return an error message to the user
-    def error(self, conn, msg):
-        self.send_msg(conn, ERROR_MSG.format(msg))
-    
-    # read the request from the worker thread
+    # read the request message from the input
     def get_req(self, conn, msg):
         print "Received: \"" + msg + "\""
         matched_request = ""
         matched_vars = []
-        for r in self.requests:
+        for r in self.messages:
             m = re.match(r.replace("{}", "(.*)"), msg)
             if m:
                 matched_request = r
@@ -133,11 +140,27 @@ class TcpServer():
         if not matched_request:
             self.error(conn, "Unknown Message")
         else:
-            self.process_req(conn, matched_request, matched_vars)
+            return (matched_request, matched_vars)
 
     # process the matched request
     def process_req(self, conn, request, vars):
-        print "Received: \"" + request.format(vars) + "\""
+        print "Received: \"" + request.format(*vars) + "\""
+
+    # send message to server
+    def propagate_msg(self, request, vars, server):
+        # connect to socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("localhost", server)) 
+
+        # send data
+        self.send_msg(s, request.format(*vars))
+
+        # accept response from socket
+        return self.get_req(s, TcpServer.extract_msg(s, s.getpeername()))
+
+    # return an error message to the user
+    def error(self, conn, msg):
+        self.send_msg(conn, config.ERROR_MSG.format(msg))
 
 def main():
 
