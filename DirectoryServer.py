@@ -19,10 +19,9 @@ class DirectoryServer(TcpServer):
                     # TODO: get server for file
                     # save file id and file location to directory file system
                     self.files[vars[1]][vars[0]] = {'id' : TcpServer.hash_str(vars[1] + vars[0])}
-                else:
-                    # return file id and location
-                    f = self.files[vars[1]][vars[0]]
-                    self.send_msg(conn, config.RETURN_FILE_ID.format(f['id'], f['id'], f['id']))
+                f = self.files[vars[1]][vars[0]]
+                # return file id and location
+                self.send_msg(conn, config.RETURN_FILE_ID.format(f['id'], f['id'], f['id']))
             except KeyError:
                 self.send_msg(conn, config.FILE_NOT_FOUND.format(vars[0], vars[1]))
         elif request == config.CLIENT_READ_FILE:
