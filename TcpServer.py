@@ -14,14 +14,13 @@ from threading import Thread, Lock
 # base from http://code.activestate.com/recipes/577187-python-thread-pool/
 class Worker(Thread):
     """Thread executing tasks from a given tasks queue"""
-    def __init__(self, requests, get_req, process_req):
+    def __init__(self, requests, server):
         print "Worker Created!"
         Thread.__init__(self)
         # store clients queue pointer
         self.requests = requests
-        # outer functions handlers to get and process reqs
-        self.get_req = get_req
-        self.process_req = process_req
+        # pointer to master server object
+        self.server = server
         # set as daemon so it dies when main thread exits
         self.daemon = True
         # start the thread on init
@@ -34,15 +33,16 @@ class Worker(Thread):
             (conn, addr) = self.requests.get()
             # check if valid connection or else kill loop
             if conn:
-                (request, vars) = self.get_req(conn, TcpServer.extract_msg(conn, addr))
-                self.process_req(conn, request, vars)
+                for msg in self.server.extract_msg(conn, addr):
+                    (request, vars) = self.server.get_req(conn, msg)
+                    self.server.process_req(conn, request, vars)
             else:
                 break;
             # set task as done in queue
             self.requests.task_done()
 
 # define main tcp server class
-class TcpServer():
+class TcpServer(object):
 
     # queue threshold to increase or decrease num workers
     QUEUE_THRESHOLD = 50.0
@@ -64,11 +64,12 @@ class TcpServer():
 
         # bind to port and listen for connections
         s.bind(("0.0.0.0", port)) 
+        self.port = port
         s.listen(5)
 
         # create initial workers
         for _ in range(int(self.MIN_THREADS)): 
-            Worker(self.requests, self.get_req, self.process_req)
+            Worker(self.requests, self)
 
         # continuous loop to keep accepting requests
         while 1:
@@ -103,33 +104,39 @@ class TcpServer():
         self.requests.put((conn, addr))
     
     # create hash of string
-    @staticmethod
-    def hash_str(string):
+    def hash_str(self, string):
         sha = hashlib.sha1(string)
         return sha.hexdigest()
 
     # function to get message text from a connection
-    @staticmethod
-    def extract_msg(conn, addr):
+    def extract_msg(self, conn, addr):
         while conn:
             msg = ""
             # Loop through message to receive data
-            while "\n\n" not in msg:
+            while "\n\n" not in msg and conn:
                 data = conn.recv(4096)
                 msg += data
                 if len(data) < 4096:
                     break
+            # yields current msg from conn if found
             if msg:
-                return msg
+                yield msg
+                # break if not client connecting file server
+                if self.port != config.FILE_SERVER:
+                    break
 
     # send message back to connection
     def send_msg(self, conn, data):
-        print "Sent: \"" + data.rstrip('\n') + "\""
+        # supress replication server messages
+        if not hasattr(self, 'is_slave'):
+            print "Sent: \"" + data.rstrip('\n') + "\""
         conn.sendall(data)
 
     # read the request message from the input
     def get_req(self, conn, msg):
-        print "Received: \"" + msg.rstrip('\n') + "\""
+        # supress replication server messages
+        if not hasattr(self, 'is_slave'):
+            print "Received: \"" + msg.rstrip('\n') + "\""
         matched_request = ""
         matched_vars = []
         for r in self.messages:
@@ -142,10 +149,6 @@ class TcpServer():
         else:
             return (matched_request, matched_vars)
 
-    # process the matched request
-    def process_req(self, conn, request, vars):
-        print "Received: \"" + request.format(*vars).rstrip('\n') + "\""
-
     # send message to server
     def propagate_msg(self, request, vars, server, response_required=True):
         # connect to socket
@@ -157,19 +160,10 @@ class TcpServer():
 
         # accept response from socket
         if response_required:
-            return self.get_req(s, TcpServer.extract_msg(s, s.getpeername()))
+            for msg in self.extract_msg(s, s.getpeername()):
+                s.close()
+                return self.get_req(s, msg)
 
     # return an error message to the user
     def error(self, conn, msg):
         self.send_msg(conn, config.ERROR_MSG.format(msg))
-
-def main():
-
-    # find port number from console arguments
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        sys.exit("Port number required")
-
-    # start tcp server
-    server = TcpServer(int(sys.argv[1]))
-
-if __name__ == "__main__": main()
