@@ -5,18 +5,18 @@ from time import sleep
 from TcpServer import TcpServer
 
 class FileServer(TcpServer):
-    messages = {config.CLIENT_WRITE_FILE, config.CLIENT_READ_FILE, config.RETURN_FILE_ID, config.LOCK_STATUS, config.CLIENT_REQUEST_LOCK, config.CLIENT_REQUEST_UNLOCK, config.RETURN_FILE_DATA, config.FILE_NOT_FOUND}
+    messages = {config.CLIENT_WRITE_FILE, config.CLIENT_READ_FILE, config.CLIENT_DELETE_FILE, config.RETURN_FILE_ID, config.LOCK_STATUS, config.CLIENT_REQUEST_LOCK, config.CLIENT_REQUEST_UNLOCK, config.RETURN_FILE_DATA, config.FILE_DELETION_SUCCESS, config.FILE_NOT_FOUND}
     files = {}
 
     # override request processing function
     def process_req(self, conn, request, vars):
         # client requesting to read or write to file
-        if request == config.CLIENT_WRITE_FILE or request == config.CLIENT_READ_FILE:
+        if request == config.CLIENT_WRITE_FILE or request == config.CLIENT_READ_FILE or request == config.CLIENT_DELETE_FILE:
             filename = vars[0]
             directory = vars[1]
             client = vars[2]
             # set action keyword depending on client request
-            action = 'WRITE' if request == config.CLIENT_WRITE_FILE else 'READ'
+            action = request.split('_', 1)[0]
 
             # request file identifier from the directory server
             (file_id_response, file_id_vars) = self.propagate_msg(config.REQUEST_FILE_ID, (filename, directory, action), config.DIR_SERVER)
@@ -35,10 +35,20 @@ class FileServer(TcpServer):
                             # return success message to user
                             self.send_msg(conn, config.SUCCESS.format("File " + filename + " written successfully."))
                         elif action == 'READ':
-                            # ask for file data from replication master to send back to user
+                            # send deletion request to replication master
                             (replic_response, replic_vars) = self.propagate_msg(config.REQUEST_FILE_DATA, (file_id,), config.REP_SERVER)
-                            data = replic_vars[0]
-                            self.send_msg(conn, config.RETURN_FILE_DATA.format(data))
+                            if replic_response == config.RETURN_FILE_DATA:
+                                data = replic_vars[0]
+                                self.send_msg(conn, config.RETURN_FILE_DATA.format(data))
+                            elif replic_response == config.FILE_NOT_FOUND:
+                                self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
+                        elif action == 'DELETE':
+                            # ask for file data from replication master to send back to user
+                            (replic_response, replic_vars) = self.propagate_msg(config.DELETE_FILE_DATA, (file_id,), config.REP_SERVER)
+                            if replic_response == config.FILE_DELETION_SUCCESS:
+                                self.send_msg(conn, config.SUCCESS.format("File " + filename + " deleted successfully."))
+                            elif replic_response == config.FILE_NOT_FOUND:
+                                self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
                         break
                     else:
                         # sleep and try file access again
@@ -49,7 +59,7 @@ class FileServer(TcpServer):
                     self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File is locked."))
             
             # return failure message to user if directory server couldn't find file
-            elif file_id_req == config.FILE_NOT_FOUND:
+            elif file_id_response == config.FILE_NOT_FOUND:
                 self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
         
         # client request to lock or unlock file
@@ -84,7 +94,7 @@ class FileServer(TcpServer):
                     self.send_msg(conn, config.FAILURE.format("Could not " + act_completed + " " + filename, "File locked by another user."))
             
             # return failure message to user if directory server couldn't find file
-            elif file_id_req == config.FILE_NOT_FOUND:
+            elif file_id_response == config.FILE_NOT_FOUND:
                 self.send_msg(conn, config.FAILURE.format("Could not access " + filename, "File not found."))
 
 def main():
