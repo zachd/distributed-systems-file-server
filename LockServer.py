@@ -1,4 +1,3 @@
-import re
 import sys
 import config
 from threading import Lock

@@ -19,14 +19,14 @@ class DirectoryServer(TcpServer):
                 # check if file exists in folder
                 if vars[0] not in self.files[vars[1]]:
                     # save file id to directory file system
-                    self.files[vars[1]][vars[0]] = {'id' : TcpServer.hash_str(vars[1] + vars[0])}
+                    self.files[vars[1]][vars[0]] = {'id' : self.hash_str(vars[1] + vars[0])}
                 
                 # return file id and location
                 self.send_msg(conn, config.RETURN_FILE_ID.format(self.files[vars[1]][vars[0]]['id']))
             
             except KeyError:
                 # return file not found if file_id key not in files dict
-                self.send_msg(conn, config.FILE_NOT_FOUND.format(vars[0], vars[1]))
+                self.send_msg(conn, config.FILE_NOT_FOUND)
 
 def main():
     server = DirectoryServer(config.DIR_SERVER)
