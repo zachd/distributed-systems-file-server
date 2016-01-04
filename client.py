@@ -12,11 +12,35 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect(("localhost", int(sys.argv[1]))) 
 s.settimeout(2)
 
-# send data
-data = config.CLIENT_WRITE_FILE.format("test.py", "Desktop", "Zachary", "hello")
+
+# WRITE FILE
+data = config.CLIENT_WRITE_FILE.format("test.py", "Desktop", "Zachary", "hello there!")
 print "Sent: \"" + data + "\""
 s.sendall(data)
 
 # print received response
 received = s.recv(2048)
 print "Received: \"{}\"".format(received)
+raw_input("Press Enter to continue...")
+
+
+# READ FILE
+data = config.CLIENT_READ_FILE.format("test.py", "Desktop", "Zachary")
+print "Sent: \"" + data + "\""
+s.sendall(data)
+
+# print received response
+received = s.recv(2048)
+print "Received: \"{}\"".format(received)
+raw_input("Press Enter to continue...")
+
+
+# DELETE FILE
+data = config.CLIENT_DELETE_FILE.format("test.py", "Desktop", "Zachary")
+print "Sent: \"" + data + "\""
+s.sendall(data)
+
+# print received response
+received = s.recv(2048)
+print "Received: \"{}\"".format(received)
+raw_input("Press Enter to continue...")
