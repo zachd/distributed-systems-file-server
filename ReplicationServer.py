@@ -1,3 +1,4 @@
+import os
 import sys
 import config
 from threading import Thread
@@ -14,7 +15,7 @@ class ReplicationSlave(Thread):
         ReplicationServer(self.port)
 
 class ReplicationServer(TcpServer):
-    messages = {config.REQUEST_FILE_DATA, config.UPDATE_FILE_DATA, config.DELETE_FILE_DATA}
+    messages = {config.READ_FILE, config.WRITE_FILE, config.DELETE_FILE}
     slaves = []
     files = {}
 
@@ -28,53 +29,65 @@ class ReplicationServer(TcpServer):
     # override request processing function
     def process_req(self, conn, request, vars):
         # requesting file data from replication server
-        if request == config.REQUEST_FILE_DATA or request == config.UPDATE_FILE_DATA or request == config.DELETE_FILE_DATA:
-            file_id = vars[0]
+        if request == config.READ_FILE or request == config.WRITE_FILE or request == config.DELETE_FILE:
+            filename = vars[0]
+            location = vars[1]
+            data = vars[3]
 
             # update file data if requesting file update
-            if request == config.UPDATE_FILE_DATA:
-                self.files[file_id] = vars[1]
+            if request == config.WRITE_FILE:
+                if location not in self.files:
+                    self.files[location] = {}
 
-                # propagate request to all slaves
+                # write file to disk
+                f = open(os.path.join(str(self.port), filename), 'w')
+                f.write(data)
+                f.close()
+
+                # propagate request to all slaves if master
                 for slave in self.slaves:
                     print "PROPAGATING WRITE REQUEST TO " + str(slave)
                     self.propagate_msg(request, vars, slave, False)
 
+                # respond to client with success message
+                if self.slaves:
+                    self.send_msg(conn, config.SUCCESS.format("File " + filename + " written."))
             else:
                 # check if file exists for read and delete
-                if file_id in self.files:
+                if location in self.files and filename in self.files[location]:
 
                     # send back file data if requesting data
-                    if request == config.REQUEST_FILE_DATA:
-                        self.send_msg(conn, config.RETURN_FILE_DATA.format(self.files[file_id]))
+                    if request == config.READ_FILE:
+                        self.send_msg(conn, config.RETURN_FILE_DATA.format(self.files[location][filename]))
 
                     # delete file from index if requesting file deletion
-                    elif request == config.DELETE_FILE_DATA:
+                    elif request == config.DELETE_FILE:
                         del self.files[file_id]
-                        self.send_msg(conn, config.FILE_DELETION_SUCCESS)
+                        self.success(conn, "File deletion success.")
 
                         # propagate request to all slaves
                         for slave in self.slaves:
                             print "PROPAGATING DELETE REQUEST TO  " + str(slave)
                             self.propagate_msg(request, vars, slave, False)
+
                 # else return file not found
                 else:
-                    self.send_msg(conn, config.FILE_NOT_FOUND)
-
-
+                    self.error(conn, "File not found.")
 
 def main():
+    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+        sys.exit("Port number required")
+
     slaves = []
 
     # initialise multiple other slave servers
-    for i in range(config.REPLICATION_SERVERS):
-        port = config.REP_SERVER + (i + 1)
+    for i in range(config.REP_SERVER_COPIES):
+        port = int(sys.argv[1]) + (i + 1)
         slaves.append(port)
         ReplicationSlave(port)
 
     # initialise master replication server
-    print slaves
-    master = ReplicationServer(config.REP_SERVER, slaves)
+    master = ReplicationServer(int(sys.argv[1]), slaves)
 
 
 if __name__ == "__main__": main()

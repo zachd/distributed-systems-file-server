@@ -15,7 +15,6 @@ from threading import Thread, Lock
 class Worker(Thread):
     """Thread executing tasks from a given tasks queue"""
     def __init__(self, requests, server):
-        print "Worker Created!"
         Thread.__init__(self)
         # store clients queue pointer
         self.requests = requests
@@ -64,7 +63,7 @@ class TcpServer(object):
 
         # bind to port and listen for connections
         s.bind(("0.0.0.0", port)) 
-        self.port = port
+        (self.ip, self.port) = s.getsockname()
         s.listen(5)
 
         # create initial workers
