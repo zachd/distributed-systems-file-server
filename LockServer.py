@@ -21,13 +21,13 @@ class LockServer(TcpServer):
                 self.locks_mutex.acquire()
                 # return failure if file is locked and lock owner is different client
                 if location in self.locks and filename in self.locks[location] and self.locks[location][filename] != client:
-                    self.send_msg(conn, config.LOCK_STATUS.format("FAILURE"))
+                    self.send_msg(conn, config.FAILURE.format("File locked by another client"))
                 # otherwise okay to lock file for client and return success
                 else:
                     if location not in self.locks:
                         self.locks[location] = {}
                     self.locks[location][filename] = client
-                    self.send_msg(conn, config.LOCK_STATUS.format("SUCCESS"))
+                    self.send_msg(conn, config.SUCCESS.format("Locked"))
             finally:
                 self.locks_mutex.release()
 
@@ -38,11 +38,15 @@ class LockServer(TcpServer):
                 self.locks_mutex.acquire()
                 # unlock and return success if file is locked and owned by client
                 if location in self.locks and filename in self.locks[location] and self.locks[location][filename] == client:
-                    del self.locks[location][file_id]
-                    self.send_msg(conn, config.LOCK_STATUS.format("SUCCESS"))
-                # otherwise return failure
+                    del self.locks[location][filename]
+                    self.send_msg(conn, config.SUCCESS.format("Unlocked"))
+                # otherwise return failure if file not in array
+                elif location not in self.locks or filename not in self.locks[location]:
+                    self.send_msg(conn, config.FAILIRE.format("File not locked"))
+                # otherwise return file locked by another client
                 else:
-                    self.send_msg(conn, config.LOCK_STATUS.format("FAILURE"))
+                    self.send_msg(conn, config.FAILURE.format("File locked by another client"))
+
             finally:
                 self.locks_mutex.release()
 
@@ -53,13 +57,14 @@ class LockServer(TcpServer):
                 self.locks_mutex.acquire()
                 # return disallowed only if file is locked and owned by different client
                 if location in self.locks and filename in self.locks[location] and self.locks[location][filename] != client:
-                    self.send_msg(conn, config.LOCK_STATUS.format("DISALLOWED"))
+                    self.send_msg(conn, config.SUCCESS.format("Disallowed"))
                 # otherwise return allowed to access file
                 else:
-                    self.send_msg(conn, config.LOCK_STATUS.format("ALLOWED"))
+                    self.send_msg(conn, config.FAILURE.format("Allowed"))
             finally:
                 self.locks_mutex.release()
 
 def main():
+    print "Lock Server started on " + str(config.LOCK_SERVER)
     server = LockServer(config.LOCK_SERVER)
 if __name__ == "__main__": main()

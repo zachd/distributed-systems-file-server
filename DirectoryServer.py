@@ -35,5 +35,6 @@ class DirectoryServer(TcpServer):
                 self.error(conn, "File not found.")
 
 def main():
+    print "Directory Server started on " + str(config.DIR_SERVER)
     server = DirectoryServer(config.DIR_SERVER)
 if __name__ == "__main__": main()

@@ -6,7 +6,7 @@ REP_SERVER = 8003
 
 # variables
 LOCK_ATTEMPTS = 1
-REP_SERVERS = 1
+REP_SERVERS = 2
 REP_SERVER_COPIES = 5
 
 # client and directory server communication
@@ -17,7 +17,6 @@ RETURN_FILE_DETAILS = 'RETURN_FILE_DETAILS: {}\nIP: {}\nPORT: {}\n\n'
 REQUEST_LOCK = 'REQUEST_LOCK: {}\nLOCATION: {}\nCLIENT: {}\n\n'
 REQUEST_USE = 'REQUEST_USE: {}\nLOCATION: {}\nCLIENT: {}\n\n'
 REQUEST_UNLOCK = 'REQUEST_UNLOCK: {}\nLOCATION: {}\nCLIENT: {}\n\n'
-LOCK_STATUS = 'LOCK_STATUS: {}\n\n'
 
 # client and replication server communication
 WRITE_FILE = 'WRITE_FILE: {}\nLOCATION: {}\nCLIENT: {}\nDATA: {}\n\n'
@@ -27,5 +26,5 @@ RETURN_FILE_DATA = 'RETURN_FILE_DATA: {}\n\n'
 
 # status messages
 SUCCESS = 'SUCCESS: {}\n\n'
-FAILURE = 'FAILURE: {}\nREASON: {}\n\n'
+FAILURE = 'FAILURE: {}\n\n'
 ERROR_MSG = 'ERROR: {}\n\n'

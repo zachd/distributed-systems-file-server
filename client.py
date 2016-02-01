@@ -5,7 +5,16 @@ import re
 from time import sleep
 from random import randrange
 
-messages = [config.RETURN_FILE_DETAILS]
+messages = [config.RETURN_FILE_DATA, config.RETURN_FILE_DETAILS, config.SUCCESS, config.FAILURE]
+
+def send_req(ip, port, data):
+    # connect server
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((ip, port)) 
+    s.settimeout(2)
+    s.sendall(data)
+    print "Sent: \"" + data.rstrip('\n') + "\""
+    return get_req(s.recv(2048))
 
 def get_req(msg):
     global messages
@@ -24,34 +33,27 @@ print "Client Proxy Interface"
 print "======================"
 name = raw_input("Enter client name: ")
 
-
-# connect to directory server
-ds = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-ds.connect(("localhost", config.DIR_SERVER)) 
-ds.settimeout(2)
-
-# get location of file to write
-data = config.REQUEST_FILE_DETAILS.format("test.txt", "Desktop", "WRITE")
-print "Sent: \"" + data + "\""
-ds.sendall(data)
-(req, vars) = get_req(ds.recv(2048))
+# get file details from directory server
+(req, vars) = send_req("localhost", config.DIR_SERVER, config.REQUEST_FILE_DETAILS.format("test.txt", "Desktop", "WRITE"))
 file_id = vars[0]
 file_ip = vars[1]
-file_port = vars[2]
-raw_input("Press Enter to continue...")
+file_port = int(vars[2])
+raw_input("Press Enter to continue...\n")
 
-
-# connect to file server
-fs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-fs.connect((vars[1], int(vars[2])))
-fs.settimeout(2)
-
-# write file to 
+# write file to server
 file = open('test.txt', 'r')
-data = config.WRITE_FILE.format("test.txt", "Desktop", name, file.read())
-print "Sent: \"" + data + "\""
-fs.sendall(data)
+send_req(file_ip, file_port, config.WRITE_FILE.format("test.txt", "Desktop", name, file.read()))
+raw_input("Press Enter to continue...\n")
 
-# print received response
-(req, vars) = get_req(fs.recv(2048))
-raw_input("Press Enter to continue...")
+# get lock on file
+send_req("localhost", config.LOCK_SERVER, config.REQUEST_LOCK.format("test.txt", "Desktop", name))
+raw_input("Press Enter to continue...\n")
+
+# read file from server
+send_req(file_ip, file_port, config.READ_FILE.format("test.txt", "Desktop", name))
+raw_input("Press Enter to continue...\n")
+
+# unlock file
+send_req("localhost", config.LOCK_SERVER, config.REQUEST_UNLOCK.format("test.txt", "Desktop", name))
+raw_input("Press Enter to continue...\n")
+

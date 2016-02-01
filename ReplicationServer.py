@@ -6,7 +6,7 @@ from TcpServer import TcpServer
 
 class ReplicationSlave(Thread):
     def __init__(self, port):
-        print "Slave " + str(port) + " Created!"
+        print "Replication Slave " + str(port) + " Created!"
         Thread.__init__(self)
         self.port = port
         self.daemon = True
@@ -24,6 +24,8 @@ class ReplicationServer(TcpServer):
         self.slaves = slaves
         if slaves == []:
             self.is_slave = True
+        if not os.path.exists(str(port)):
+            os.makedirs(str(port))
         TcpServer.__init__(self, port)
 
     # override request processing function
@@ -32,12 +34,14 @@ class ReplicationServer(TcpServer):
         if request == config.READ_FILE or request == config.WRITE_FILE or request == config.DELETE_FILE:
             filename = vars[0]
             location = vars[1]
-            data = vars[3]
 
             # update file data if requesting file update
             if request == config.WRITE_FILE:
+                data = vars[3]
                 if location not in self.files:
                     self.files[location] = {}
+
+                self.files[location][filename] = True
 
                 # write file to disk
                 f = open(os.path.join(str(self.port), filename), 'w')
@@ -58,7 +62,9 @@ class ReplicationServer(TcpServer):
 
                     # send back file data if requesting data
                     if request == config.READ_FILE:
-                        self.send_msg(conn, config.RETURN_FILE_DATA.format(self.files[location][filename]))
+                        f = open(os.path.join(str(self.port), filename), 'r')
+                        self.send_msg(conn, config.RETURN_FILE_DATA.format(f.read()))
+                        f.close()
 
                     # delete file from index if requesting file deletion
                     elif request == config.DELETE_FILE:
@@ -77,7 +83,8 @@ class ReplicationServer(TcpServer):
 def main():
     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
         sys.exit("Port number required")
-
+    print "Replication Master started on " + sys.argv[1]
+    
     slaves = []
 
     # initialise multiple other slave servers
