@@ -10,9 +10,8 @@ class LockServer(TcpServer):
 
     # override request processing function
     def process_req(self, conn, request, vars):
-        filename = vars[0]
-        location = vars[1]
-        client = vars[2]
+        file_id = vars[0]
+        client = vars[1]
 
         # lock request
         if request == config.REQUEST_LOCK:
@@ -20,13 +19,11 @@ class LockServer(TcpServer):
                 # acquire locks mutex
                 self.locks_mutex.acquire()
                 # return failure if file is locked and lock owner is different client
-                if location in self.locks and filename in self.locks[location] and self.locks[location][filename] != client:
+                if file_id in self.locks and self.locks[file_id] != client:
                     self.send_msg(conn, config.FAILURE.format("File locked by another client"))
                 # otherwise okay to lock file for client and return success
                 else:
-                    if location not in self.locks:
-                        self.locks[location] = {}
-                    self.locks[location][filename] = client
+                    self.locks[file_id] = client
                     self.send_msg(conn, config.SUCCESS.format("Locked"))
             finally:
                 self.locks_mutex.release()
@@ -37,11 +34,11 @@ class LockServer(TcpServer):
                 # acquire locks mutex
                 self.locks_mutex.acquire()
                 # unlock and return success if file is locked and owned by client
-                if location in self.locks and filename in self.locks[location] and self.locks[location][filename] == client:
-                    del self.locks[location][filename]
+                if file_id in self.locks and self.locks[file_id] == client:
+                    del self.locks[file_id]
                     self.send_msg(conn, config.SUCCESS.format("Unlocked"))
                 # otherwise return failure if file not in array
-                elif location not in self.locks or filename not in self.locks[location]:
+                elif file_id not in self.locks:
                     self.send_msg(conn, config.FAILIRE.format("File not locked"))
                 # otherwise return file locked by another client
                 else:
@@ -56,7 +53,7 @@ class LockServer(TcpServer):
                 # acquire locks mutex
                 self.locks_mutex.acquire()
                 # return disallowed only if file is locked and owned by different client
-                if location in self.locks and filename in self.locks[location] and self.locks[location][filename] != client:
+                if file_id in self.locks and self.locks[file_id] != client:
                     self.send_msg(conn, config.SUCCESS.format("Disallowed"))
                 # otherwise return allowed to access file
                 else:

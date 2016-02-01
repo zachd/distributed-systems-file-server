@@ -42,18 +42,18 @@ raw_input("Press Enter to continue...\n")
 
 # write file to server
 file = open('test.txt', 'r')
-send_req(file_ip, file_port, config.WRITE_FILE.format("test.txt", "Desktop", name, file.read()))
+send_req(file_ip, file_port, config.WRITE_FILE.format(file_id, name, file.read()))
 raw_input("Press Enter to continue...\n")
 
 # get lock on file
-send_req("localhost", config.LOCK_SERVER, config.REQUEST_LOCK.format("test.txt", "Desktop", name))
+send_req("localhost", config.LOCK_SERVER, config.REQUEST_LOCK.format(file_id, name))
 raw_input("Press Enter to continue...\n")
 
 # read file from server
-send_req(file_ip, file_port, config.READ_FILE.format("test.txt", "Desktop", name))
+send_req(file_ip, file_port, config.READ_FILE.format(file_id, name))
 raw_input("Press Enter to continue...\n")
 
 # unlock file
-send_req("localhost", config.LOCK_SERVER, config.REQUEST_UNLOCK.format("test.txt", "Desktop", name))
+send_req("localhost", config.LOCK_SERVER, config.REQUEST_UNLOCK.format(file_id, name))
 raw_input("Press Enter to continue...\n")
 

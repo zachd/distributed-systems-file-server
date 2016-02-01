@@ -22,8 +22,7 @@ class ReplicationServer(TcpServer):
     # override init function to import slaves list
     def __init__(self, port, slaves=[]):
         self.slaves = slaves
-        if slaves == []:
-            self.is_slave = True
+        self.is_slave = True if slaves == [] else False
         if not os.path.exists(str(port)):
             os.makedirs(str(port))
         TcpServer.__init__(self, port)
@@ -32,19 +31,16 @@ class ReplicationServer(TcpServer):
     def process_req(self, conn, request, vars):
         # requesting file data from replication server
         if request == config.READ_FILE or request == config.WRITE_FILE or request == config.DELETE_FILE:
-            filename = vars[0]
-            location = vars[1]
+            file_id = vars[0]
 
             # update file data if requesting file update
             if request == config.WRITE_FILE:
-                data = vars[3]
-                if location not in self.files:
-                    self.files[location] = {}
+                data = vars[2]
 
-                self.files[location][filename] = True
+                self.files[file_id] = True
 
                 # write file to disk
-                f = open(os.path.join(str(self.port), filename), 'w')
+                f = open(os.path.join(str(self.port), file_id), 'w')
                 f.write(data)
                 f.close()
 
@@ -54,27 +50,29 @@ class ReplicationServer(TcpServer):
                     self.propagate_msg(request, vars, slave, False)
 
                 # respond to client with success message
-                if self.slaves:
-                    self.send_msg(conn, config.SUCCESS.format("File " + filename + " written."))
+                if not self.is_slave:
+                    self.send_msg(conn, config.SUCCESS.format("File written successfully."))
             else:
                 # check if file exists for read and delete
-                if location in self.files and filename in self.files[location]:
+                if file_id in self.files:
 
                     # send back file data if requesting data
                     if request == config.READ_FILE:
-                        f = open(os.path.join(str(self.port), filename), 'r')
+                        f = open(os.path.join(str(self.port), file_id), 'r')
                         self.send_msg(conn, config.RETURN_FILE_DATA.format(f.read()))
                         f.close()
 
                     # delete file from index if requesting file deletion
                     elif request == config.DELETE_FILE:
                         del self.files[file_id]
-                        self.success(conn, "File deletion success.")
 
                         # propagate request to all slaves
                         for slave in self.slaves:
                             print "PROPAGATING DELETE REQUEST TO  " + str(slave)
                             self.propagate_msg(request, vars, slave, False)
+                    # respond to client with success message
+                    if not self.is_slave:
+                        self.send_msg(conn, config.SUCCESS.format("File deleted successfully."))
 
                 # else return file not found
                 else:
