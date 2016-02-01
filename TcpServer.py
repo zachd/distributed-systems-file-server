@@ -127,14 +127,14 @@ class TcpServer(object):
     # send message back to connection
     def send_msg(self, conn, data):
         # supress replication server messages
-        if not hasattr(self, 'is_slave'):
+        if not hasattr(self, 'is_slave') or self.is_slave == False:
             print "Sent: \"" + data.rstrip('\n') + "\""
         conn.sendall(data)
 
     # read the request message from the input
     def get_req(self, conn, msg):
         # supress replication server messages
-        if not hasattr(self, 'is_slave'):
+        if not hasattr(self, 'is_slave') or self.is_slave == False:
             print "Received: \"" + msg.rstrip('\n') + "\""
         matched_request = ""
         matched_vars = []

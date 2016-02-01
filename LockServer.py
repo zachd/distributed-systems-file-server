@@ -39,7 +39,7 @@ class LockServer(TcpServer):
                     self.send_msg(conn, config.SUCCESS.format("Unlocked"))
                 # otherwise return failure if file not in array
                 elif file_id not in self.locks:
-                    self.send_msg(conn, config.FAILIRE.format("File not locked"))
+                    self.send_msg(conn, config.FAILURE.format("File not locked"))
                 # otherwise return file locked by another client
                 else:
                     self.send_msg(conn, config.FAILURE.format("File locked by another client"))
@@ -54,10 +54,10 @@ class LockServer(TcpServer):
                 self.locks_mutex.acquire()
                 # return disallowed only if file is locked and owned by different client
                 if file_id in self.locks and self.locks[file_id] != client:
-                    self.send_msg(conn, config.SUCCESS.format("Disallowed"))
+                    self.send_msg(conn, config.FAILURE.format("Disallowed"))
                 # otherwise return allowed to access file
                 else:
-                    self.send_msg(conn, config.FAILURE.format("Allowed"))
+                    self.send_msg(conn, config.SUCCESS.format("Allowed"))
             finally:
                 self.locks_mutex.release()
 
